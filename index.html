@@ -1,0 +1,685 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Starry Echoes: The Geographer's Maze</title>
+    <style>
+        body { margin: 0; background: #000; overflow: hidden; font-family: 'Courier New', monospace; touch-action: none; user-select: none; }
+        
+        canvas { 
+            display: block; width: 100vw; height: 100vh; object-fit: contain;
+            image-rendering: pixelated; 
+        }
+
+        #ui-layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; }
+        .hud { position: absolute; color: #fff; text-shadow: 2px 2px 0 #000; font-weight: bold; pointer-events: none; }
+        #lives { top: 20px; left: 20px; font-size: 30px; }
+        #score-board { top: 20px; right: 20px; font-size: 24px; text-align: right; }
+        
+        #joystick-zone { position: absolute; bottom: 50px; left: 50px; width: 150px; height: 150px; pointer-events: auto; z-index: 50; }
+        #joystick-knob { position: absolute; width: 50px; height: 50px; background: rgba(255,255,255,0.5); border-radius: 50%; top: 50%; left: 50%; transform: translate(-50%, -50%); box-shadow: 0 0 10px #fff; pointer-events: none; }
+        #joystick-base { width: 100%; height: 100%; border: 2px solid rgba(255,255,255,0.3); border-radius: 50%; background: rgba(0,0,0,0.2); }
+
+        .modal { 
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%; 
+            background: rgba(0,0,0,0.95); z-index: 100; 
+            display: flex; flex-direction: column; justify-content: center; align-items: center; 
+            color: #fff; text-align: center; padding: 20px; box-sizing: border-box;
+        }
+        .hidden { display: none !important; }
+        
+        h1 { font-size: 40px; margin-bottom: 10px; color: #f9d71c; }
+        p { font-size: 18px; line-height: 1.6; max-width: 600px; margin: 0 auto 20px auto; }
+        
+        .btn { 
+            background: #2b5fa3; color: #fff; border: 2px solid #f9d71c; 
+            padding: 15px 40px; font-size: 20px; cursor: pointer; margin: 10px; 
+            border-radius: 10px; font-family: inherit; transition: 0.2s;
+        }
+        .btn:active { transform: scale(0.95); }
+        .lang-btn { width: 120px; display: inline-block; }
+
+        #story-box { 
+            background: rgba(0, 20, 40, 0.9); border: 4px solid #f9d71c; 
+            border-radius: 15px; padding: 30px; max-width: 80%;
+        }
+        #story-title { color: #f9d71c; font-size: 24px; margin-bottom: 15px; }
+        #story-content { font-size: 18px; text-align: left; min-height: 100px; }
+
+        /* 开始界面背景 */
+        #start-screen {
+            background-image: url('bg_start.jpg');
+            background-size: cover;
+            background-position: center;
+            background-repeat: no-repeat;
+        }
+        
+        /* 音乐按钮在右下角 */
+        #music-btn {
+            position: absolute;
+            bottom: 20px;  /* 从top改为bottom */
+            right: 20px;
+            background: rgba(255,255,255,0.2);
+            border: 2px solid #f9d71c;
+            color: #f9d71c;
+            padding: 10px 15px;
+            border-radius: 50%;
+            cursor: pointer;
+            z-index: 200;
+            font-size: 24px;
+        }
+        
+        /* 故事背景图片 */
+        #story-bg-img {
+            max-width: 90%;
+            max-height: 40vh;
+            margin: 20px auto;
+            border: 3px solid #f9d71c;
+            border-radius: 10px;
+        }
+    </style>
+</head>
+<body>
+
+    <canvas id="gameCanvas"></canvas>
+
+    <!-- 背景音乐 -->
+    <audio id="bgMusic" loop>
+        <source src="bgm.mp3" type="audio/mpeg">
+        Your browser does not support the audio element.
+    </audio>
+    
+    <!-- 音乐按钮移到右下角 -->
+    <div id="music-btn" onclick="toggleMusic()">🎵</div>
+
+    <div id="ui-layer">
+        <div id="lives" class="hud">❤️❤️❤️</div>
+        <div id="score-board" class="hud">
+            LV <span id="level-num">1</span><br>
+            <span id="collect-text">0%</span>
+        </div>
+        <div id="joystick-zone">
+            <div id="joystick-base"></div>
+            <div id="joystick-knob"></div>
+        </div>
+    </div>
+
+    <!-- 开始界面 -->
+    <div id="start-screen" class="modal">
+        <h1 style="font-family: serif; font-style: italic;">Starry Echoes</h1>
+        <p style="color: #aaa;">The Geographer's Maze</p>
+        <div style="margin-top: 40px;">
+            <button class="btn lang-btn" onclick="selectLang('CN')">中文</button>
+            <button class="btn lang-btn" onclick="selectLang('BM')">Melayu</button>
+            <button class="btn lang-btn" onclick="selectLang('EN')">English</button>
+        </div>
+    </div>
+
+    <!-- 关卡内剧情 -->
+    <div id="story-modal" class="modal hidden">
+        <div id="story-box">
+            <div id="story-title">HISTORY FOUND</div>
+            <div id="story-content">...</div>
+            <button class="btn" onclick="closeStory()">▼</button>
+        </div>
+    </div>
+
+    <!-- 关卡结算 -->
+    <div id="result-modal" class="modal hidden">
+        <h1 id="result-title">LEVEL CLEARED</h1>
+        <p id="result-desc">Proceed to the next room.</p>
+        <button id="next-btn" class="btn" onclick="nextLevel()">CONTINUE</button>
+    </div>
+
+    <!-- 关卡后故事背景（每关通关后显示） -->
+    <div id="level-story-modal" class="modal hidden">
+        <div id="story-box">
+            <img id="story-bg-img" src="" alt="Story Background">
+            <div id="level-story-content" style="font-size: 16px; line-height: 1.8; margin-top: 20px;"></div>
+            <button class="btn" onclick="closeLevelStory()">继续</button>
+        </div>
+    </div>
+
+<script>
+/**
+ * 配置与常量
+ */
+const CANVAS = document.getElementById('gameCanvas');
+const CTX = CANVAS.getContext('2d');
+const MASK_CANVAS = document.createElement('canvas');
+const MASK_CTX = MASK_CANVAS.getContext('2d');
+
+// 游戏参数
+const PLAYER_SIZE = 12;
+const GHOST_SIZE = 15;
+const P_SPEED = 4.5;
+const G_SPEED = 1.9;
+const GRID_SIZE = 40;
+
+// 状态变量
+let currentLang = 'CN'; // 默认中文
+let currentLevel = 1;
+let gameRunning = false;
+let isPaused = false;
+let lives = 3;
+let totalDots = 0;
+let collectedDots = 0;
+let frameId;
+let musicPlaying = false;
+
+// 实体
+let player = { x: 0, y: 0, dx: 0, dy: 0, invulnerable: 0 };
+let ghosts = [];
+let dots = [];
+let bigStars = [];
+
+// 输入状态
+let keys = {};
+let joystick = { active: false, dx: 0, dy: 0, originX: 0, originY: 0 };
+
+/**
+ * 完整的故事文本数据 - 每关通关后显示
+ */
+const TEXT_DATA = {
+    CN: {
+        ui_score: "收集度",
+        ui_lives: "生命",
+        level_cleared: "区域解锁",
+        game_over: "意识迷失",
+        btn_continue: "进入下一层",
+        btn_retry: "重新尝试",
+        win_title: "记忆修复完成",
+        win_desc: "你抚平了这座建筑的情绪。地理学的传承，从1922延续至今。",
+        
+        // 关卡内剧情
+        l1_intro: "你出于好奇推开了地理室的门...这里变得不一样了。那是梵高的星空吗？",
+        l1_star1: "【2005年的回响】\n这栋建筑落成于2005年。你看那陡峭的屋顶(Bumbung Curam)和标志性的通风孔，那是为了适应热带气候而保留的殖民地美学。",
+        
+        l2_intro: "房间变得更破旧了...地上堆满了旧时代的教具。",
+        l2_star1: "【1922年的遗产】\n这里继承了 SITC 时代的灵魂。地理曾是这里最早的核心科目(Subjek Teras)，教导马来教师们理解脚下的土地与世界。",
+        
+        l3_intro: "空间开始扭曲！墙上的浮雕仿佛活了过来！快逃出去！",
+        l3_star1: "【探索的演变】\n墙上的浮雕(Arca Timbul)诉说着人类的探索史。从古老的手工制图到现代 GIS 系统，我们对世界的认知从未停止。",
+        
+        // 每关通关后故事背景
+        level1_complete: "【第一章：苏醒】\n你收集了这个区域的所有记忆碎片。建筑在回应你，墙壁上的星空开始流动，仿佛有什么要苏醒过来。",
+        level2_complete: "【第二章：追忆】\n随着更多记忆被修复，建筑的过去逐渐清晰。1922年的灵魂与2005年的新生命在此交织。",
+        level3_complete: "【终章：传承】\n所有的记忆都已收集完成。这座建筑的情绪被彻底抚平，地理学的传承将永远延续。",
+    },
+    BM: {
+        ui_score: "KUTIPAN",
+        ui_lives: "NYAWA",
+        level_cleared: "ZON DIBUKA",
+        game_over: "TAMAT PERMAINAN",
+        btn_continue: "TERUSKAN",
+        btn_retry: "CUBA LAGI",
+        win_title: "MISI SELESAI",
+        win_desc: "Emosi bangunan telah dipulihkan. Legasi Geografi kekal dari 1922 hingga kini.",
+        
+        l1_intro: "Perasaan ingin tahu membawa anda ke sini... Adakah ini lukisan Van Gogh?",
+        l1_star1: "【Gema 2005】\nBangunan ini dirasmikan pada 2005. Lihat bumbung curam dan lubang pengudaraan itu, ia mengekalkan estetika kolonial untuk iklim tropika.",
+        
+        l2_intro: "Bilik ini kelihatan usang... Penuh dengan peralatan lama.",
+        l2_star1: "【Warisan 1922】\nDi sini terletaknya jiwa SITC. Geografi adalah antara subjek teras terawal, mengajar guru Melayu memahami tanah air dan dunia.",
+        
+        l3_intro: "Ruang semakin herot! Arca di dinding seakan hidup! Lari!",
+        l3_star1: "【Evolusi Eksplorasi】\nArca timbul ini menceritakan sejarah eksplorasi. Dari peta manual ke sistem GIS moden, ilmu geografi terus berkembang.",
+        
+        level1_complete: "【Bab 1: Kebangkitan】\nAnda mengumpulkan semua serpihan memori di kawasan ini. Bangunan itu menjawab, bintang di dinding mula mengalir, seolah-olah sesuatu akan bangkit.",
+        level2_complete: "【Bab 2: Kenangan】\nDengan lebih banyak memori dipulihkan, masa lalu bangunan menjadi lebih jelas. Jiwa tahun 1922 dan nyawa baru tahun 2005 bersatu di sini.",
+        level3_complete: "【Bab Akhir: Warisan】\nSemua memori telah dikumpulkan sepenuhnya. Emosi bangunan telah tenang sepenuhnya, warisan Geografi akan berterusan selamanya.",
+    },
+    EN: {
+        ui_score: "COLLECTED",
+        ui_lives: "LIVES",
+        level_cleared: "AREA CLEARED",
+        game_over: "GAME OVER",
+        btn_continue: "NEXT ROOM",
+        btn_retry: "TRY AGAIN",
+        win_title: "MEMORY RESTORED",
+        win_desc: "You have soothed the building's emotions. The legacy of Geography lives on.",
+        
+        l1_intro: "Curiosity led you inside... Is this a Van Gogh painting?",
+        l1_star1: "【Echoes of 2005】\nBuilt in 2005, this lab features steep roofs and iconic ventilation holes, preserving colonial aesthetics for the tropical climate.",
+        
+        l2_intro: "The room feels older... cluttered with vintage equipment.",
+        l2_star1: "【Legacy of 1922】\nThis site inherits the soul of SITC. Geography was a core subject, teaching Malay teachers to understand their land and geopolitics.",
+        
+        l3_intro: "Reality is twisting! The wall reliefs are moving! Run!",
+        l3_star1: "【Evolution of Exploration】\nThe wall reliefs (Arca Timbul) tell the story of exploration. From manual mapping to modern GIS, our quest for knowledge never ends.",
+        
+        level1_complete: "【Chapter 1: Awakening】\nYou collected all memory fragments in this area. The building responds, stars on walls begin to flow as if something is awakening.",
+        level2_complete: "【Chapter 2: Remembrance】\nWith more memories restored, the building's past becomes clearer. The soul of 1922 and new life of 2005 intertwine here.",
+        level3_complete: "【Final Chapter: Legacy】\nAll memories have been collected. The building's emotions are completely soothed, the legacy of Geography will continue forever.",
+    }
+};
+
+/**
+ * 资源管理与初始化
+ */
+const bgImg = new Image();
+const maskImg = new Image();
+const levelStoryImgs = []; // 关卡故事背景图片
+
+// 预加载关卡故事背景图
+for(let i=0; i<3; i++) {
+    const img = new Image();
+    img.src = `story_bg${i+1}.jpg`;
+    img.onerror = () => {
+        console.error(`Failed to load story_bg${i+1}.jpg`);
+        img.loaded = false;
+    };
+    img.onload = () => {
+        img.loaded = true;
+        console.log(`Loaded story_bg${i+1}.jpg`);
+    };
+    levelStoryImgs.push(img);
+}
+
+function toggleMusic() {
+    const audio = document.getElementById('bgMusic');
+    const btn = document.getElementById('music-btn');
+    if (!audio) return;
+    
+    if (musicPlaying) {
+        audio.pause();
+        btn.textContent = '🔇';
+    } else {
+        audio.play().catch(e => {
+            console.log('音乐播放失败:', e);
+            alert('音乐播放失败，请检查bgm.mp3文件是否存在');
+        });
+        btn.textContent = '🎵';
+    }
+    musicPlaying = !musicPlaying;
+}
+
+function selectLang(lang) {
+    currentLang = lang;
+    document.getElementById('start-screen').classList.add('hidden');
+    initLevel(1);
+}
+
+function initLevel(lvl) {
+    currentLevel = lvl;
+    isPaused = true;
+    gameRunning = false;
+    
+    bgImg.src = `bg_level${lvl}.jpg`;
+    maskImg.src = `mask_level${lvl}.jpg`;
+    
+    let loaded = 0;
+    const checkLoad = () => {
+        loaded++;
+        if(loaded === 2) setupGameWorld();
+    };
+    bgImg.onload = checkLoad;
+    maskImg.onload = checkLoad;
+    bgImg.onerror = () => { 
+        console.error(`Missing bg_level${lvl}.jpg`); 
+        checkLoad(); 
+    };
+    maskImg.onerror = () => { 
+        console.error(`Missing mask_level${lvl}.jpg`); 
+        checkLoad(); 
+    };
+}
+
+function setupGameWorld() {
+    CANVAS.width = MASK_CANVAS.width = bgImg.naturalWidth;
+    CANVAS.height = MASK_CANVAS.height = bgImg.naturalHeight;
+    MASK_CTX.drawImage(maskImg, 0, 0);
+    CTX.imageSmoothingEnabled = false;
+
+    let startPos = findSafeSpot(100, CANVAS.height/2, PLAYER_SIZE);
+    player.x = startPos.x;
+    player.y = startPos.y;
+    player.invulnerable = 0;
+
+    ghosts = [];
+    let ghostCount = currentLevel;
+    for(let i=0; i<ghostCount; i++) {
+        let gPos = findSafeSpot(CANVAS.width - 200, 200 + i*150, GHOST_SIZE);
+        ghosts.push({ x: gPos.x, y: gPos.y, angle: Math.PI, color: '#000' });
+    }
+
+    generateDotsAndStars();
+
+    showStory(getText(`l${currentLevel}_intro`));
+    
+    gameRunning = true;
+    isPaused = true;
+    updateHUD();
+    requestAnimationFrame(gameLoop);
+}
+
+function generateDotsAndStars() {
+    dots = [];
+    bigStars = [];
+    let w = CANVAS.width;
+    let h = CANVAS.height;
+
+    for(let y = 50; y < h - 50; y += GRID_SIZE) {
+        for(let x = 50; x < w - 50; x += GRID_SIZE) {
+            if(!checkCollision(x, y, 5)) {
+                dots.push({ x: x, y: y, active: true });
+            }
+        }
+    }
+    totalDots = dots.length;
+    collectedDots = 0;
+
+    let mid = findSafeSpot(w/2, h/2, 20);
+    bigStars.push({ x: mid.x, y: mid.y, textKey: `l${currentLevel}_star1`, active: true, size: 14 });
+}
+
+function update() {
+    if(!gameRunning || isPaused) return;
+
+    let dx = 0, dy = 0;
+    
+    if (keys['ArrowUp']) dy -= 1;
+    if (keys['ArrowDown']) dy += 1;
+    if (keys['ArrowLeft']) dx -= 1;
+    if (keys['ArrowRight']) dx += 1;
+    
+    if (joystick.active) {
+        dx = joystick.dx;
+        dy = joystick.dy;
+    }
+
+    if (dx !== 0 || dy !== 0) {
+        let len = Math.hypot(dx, dy);
+        if (len > 0.1) {
+            dx = (dx / len) * P_SPEED;
+            dy = (dy / len) * P_SPEED;
+            moveWithPhysics(player, dx, dy, PLAYER_SIZE);
+        }
+    }
+
+    ghosts.forEach(g => {
+        let tx = player.x - g.x;
+        let ty = player.y - g.y;
+        let dist = Math.hypot(tx, ty);
+        let targetAngle = Math.atan2(ty, tx);
+
+        let bestAngle = g.angle;
+        let foundPath = false;
+        let scanAngles = [0, -0.4, 0.4, -0.8, 0.8, -1.5, 1.5];
+
+        for (let a of scanAngles) {
+            let tryA = targetAngle + a;
+            let lookAhead = G_SPEED * 15;
+            let px = g.x + Math.cos(tryA) * lookAhead;
+            let py = g.y + Math.sin(tryA) * lookAhead;
+            
+            if (!checkCollision(px, py, GHOST_SIZE)) {
+                bestAngle = tryA;
+                foundPath = true;
+                break;
+            }
+        }
+
+        if (!foundPath) bestAngle += 2.5;
+
+        let diff = bestAngle - g.angle;
+        while(diff > Math.PI) diff -= Math.PI*2;
+        while(diff < -Math.PI) diff += Math.PI*2;
+        g.angle += diff * 0.15;
+
+        moveWithPhysics(g, Math.cos(g.angle)*G_SPEED, Math.sin(g.angle)*G_SPEED, GHOST_SIZE);
+
+        if (dist < PLAYER_SIZE + GHOST_SIZE && player.invulnerable <= 0) {
+            playerHit();
+        }
+    });
+
+    if (player.invulnerable > 0) player.invulnerable--;
+
+    dots.forEach(d => {
+        if (d.active && Math.hypot(player.x - d.x, player.y - d.y) < PLAYER_SIZE + 5) {
+            d.active = false;
+            collectedDots++;
+            updateHUD();
+        }
+    });
+
+    bigStars.forEach(s => {
+        if (s.active && Math.hypot(player.x - s.x, player.y - s.y) < PLAYER_SIZE + 10) {
+            s.active = false;
+            let text = getText(s.textKey);
+            showStory(text);
+        }
+    });
+
+    let progress = collectedDots / totalDots;
+    // 修改：必须收集100%才能通关
+    if (progress >= 1.0 && player.x > CANVAS.width - 150) {
+        levelWin();
+    }
+}
+
+function draw() {
+    CTX.clearRect(0, 0, CANVAS.width, CANVAS.height);
+    CTX.drawImage(bgImg, 0, 0);
+
+    CTX.fillStyle = "#f9d71c";
+    dots.forEach(d => {
+        if(d.active) CTX.fillRect(d.x - 3, d.y - 3, 6, 6);
+    });
+
+    CTX.fillStyle = "#fff";
+    CTX.shadowBlur = 10; CTX.shadowColor = "#f9d71c";
+    bigStars.forEach(s => {
+        if(s.active) {
+            CTX.beginPath(); CTX.arc(s.x, s.y, s.size || 14, 0, Math.PI*2); CTX.fill();
+        }
+    });
+    CTX.shadowBlur = 0;
+
+    if (Math.floor(player.invulnerable / 5) % 2 === 0) {
+        CTX.fillStyle = "#0ff";
+        CTX.fillRect(player.x - PLAYER_SIZE, player.y - PLAYER_SIZE, PLAYER_SIZE*2, PLAYER_SIZE*2);
+        CTX.fillStyle = "#000";
+        CTX.fillRect(player.x - 5, player.y - 4, 3, 3);
+        CTX.fillRect(player.x + 2, player.y - 4, 3, 3);
+    }
+
+    ghosts.forEach(g => {
+        CTX.save();
+        CTX.translate(g.x, g.y);
+        CTX.rotate(g.angle);
+        CTX.fillStyle = "#000";
+        CTX.beginPath(); CTX.arc(0, 0, GHOST_SIZE, 0, Math.PI*2); CTX.fill();
+        CTX.strokeStyle = "#f00"; CTX.lineWidth = 2;
+        CTX.beginPath(); CTX.moveTo(0,0); CTX.lineTo(10,0); CTX.stroke();
+        CTX.restore();
+    });
+}
+
+function isWall(x, y) {
+    if (x < 0 || x >= MASK_CANVAS.width || y < 0 || y >= MASK_CANVAS.height) return true;
+    return MASK_CTX.getImageData(Math.floor(x), Math.floor(y), 1, 1).data[0] < 120;
+}
+
+function checkCollision(x, y, size) {
+    let r = size - 1;
+    return isWall(x, y) || 
+           isWall(x+r, y) || isWall(x-r, y) || 
+           isWall(x, y+r) || isWall(x, y-r) ||
+           isWall(x+r, y+r) || isWall(x-r, y-r);
+}
+
+function moveWithPhysics(entity, dx, dy, size) {
+    const steps = 4; 
+    let sx = dx / steps;
+    let sy = dy / steps;
+    for(let i=0; i<steps; i++) {
+        if(!checkCollision(entity.x + sx, entity.y, size)) entity.x += sx;
+        if(!checkCollision(entity.x, entity.y + sy, size)) entity.y += sy;
+    }
+}
+
+function findSafeSpot(sx, sy, size) {
+    let r = 0;
+    while(r < 500) {
+        for(let dx = -r; dx <= r; dx += 20) {
+            for(let dy = -r; dy <= r; dy += 20) {
+                if(!checkCollision(sx+dx, sy+dy, size)) return {x: sx+dx, y: sy+dy};
+            }
+        }
+        r += 50;
+    }
+    return {x: sx, y: sy};
+}
+
+function playerHit() {
+    lives--;
+    updateHUD();
+    if (lives <= 0) {
+        showResult(getText('game_over'), getText('btn_retry'), () => location.reload());
+    } else {
+        player.invulnerable = 120;
+        let safe = findSafeSpot(100, CANVAS.height/2, PLAYER_SIZE);
+        player.x = safe.x; player.y = safe.y;
+        ghosts.forEach(g => g.x += 200); 
+        alert("OUCH! Carefull...");
+    }
+}
+
+// 修改：每关通关后显示对应故事背景
+function levelWin() {
+    isPaused = true;
+    gameRunning = false;
+    
+    // 先隐藏结算界面
+    document.getElementById('result-modal').classList.add('hidden');
+    
+    // 显示当前关卡的故事背景
+    showLevelStory(currentLevel);
+}
+
+// 显示关卡故事背景（story_bg1, story_bg2, story_bg3）
+function showLevelStory(level) {
+    const modal = document.getElementById('level-story-modal');
+    const img = document.getElementById('story-bg-img');
+    const content = document.getElementById('level-story-content');
+    
+    // 加载对应关卡的背景图
+    const storyIndex = level - 1; // 关卡1对应story_bg1
+    if (levelStoryImgs[storyIndex] && levelStoryImgs[storyIndex].loaded) {
+        img.src = levelStoryImgs[storyIndex].src;
+        img.style.display = 'block';
+    } else {
+        img.style.display = 'none';
+        console.warn(`story_bg${level}.jpg not loaded`);
+    }
+    
+    // 显示对应文本
+    content.textContent = getText(`level${level}_complete`);
+    modal.classList.remove('hidden');
+}
+
+// 关闭关卡故事，进入下一关或结束游戏
+function closeLevelStory() {
+    document.getElementById('level-story-modal').classList.add('hidden');
+    
+    if (currentLevel < 3) {
+        // 进入下一关
+        initLevel(currentLevel + 1);
+    } else {
+        // 全部通关，显示最终胜利画面
+        showResult(getText('win_title'), getText('btn_retry'), () => location.reload());
+    }
+}
+
+function showStory(text) {
+    isPaused = true;
+    document.getElementById('story-content').innerText = text;
+    document.getElementById('story-modal').classList.remove('hidden');
+}
+
+function closeStory() {
+    document.getElementById('story-modal').classList.add('hidden');
+    isPaused = false;
+}
+
+function showResult(title, btnText, callback) {
+    document.getElementById('result-title').innerText = title;
+    document.getElementById('result-desc').innerText = "";
+    let btn = document.getElementById('next-btn');
+    btn.innerText = btnText;
+    btn.onclick = callback;
+    document.getElementById('result-modal').classList.remove('hidden');
+}
+
+function getText(key) {
+    return TEXT_DATA[currentLang][key] || key;
+}
+
+function updateHUD() {
+    let hearts = "";
+    for(let i=0; i<lives; i++) hearts += "❤️";
+    document.getElementById('lives').innerHTML = hearts;
+    
+    let pct = Math.floor((collectedDots / totalDots) * 100);
+    document.getElementById('collect-text').innerText = isNaN(pct) ? "0%" : pct + "%";
+    document.getElementById('level-num').innerText = currentLevel;
+}
+
+window.addEventListener('keydown', e => keys[e.key] = true);
+window.addEventListener('keyup', e => keys[e.key] = false);
+
+const joyZone = document.getElementById('joystick-zone');
+const joyKnob = document.getElementById('joystick-knob');
+
+joyZone.addEventListener('touchstart', e => {
+    e.preventDefault();
+    let touch = e.touches[0];
+    let rect = joyZone.getBoundingClientRect();
+    joystick.active = true;
+    joystick.originX = rect.left + rect.width/2;
+    joystick.originY = rect.top + rect.height/2;
+    updateJoystick(touch.clientX, touch.clientY);
+}, {passive: false});
+
+joyZone.addEventListener('touchmove', e => {
+    e.preventDefault();
+    if(joystick.active) updateJoystick(e.touches[0].clientX, e.touches[0].clientY);
+}, {passive: false});
+
+const endJoy = e => {
+    e.preventDefault();
+    joystick.active = false;
+    joystick.dx = 0; joystick.dy = 0;
+    joyKnob.style.transform = `translate(-50%, -50%)`;
+};
+joyZone.addEventListener('touchend', endJoy);
+joyZone.addEventListener('touchcancel', endJoy);
+
+function updateJoystick(x, y) {
+    let maxDist = 40;
+    let dx = x - joystick.originX;
+    let dy = y - joystick.originY;
+    let dist = Math.hypot(dx, dy);
+    
+    if(dist > maxDist) {
+        dx = (dx/dist) * maxDist;
+        dy = (dy/dist) * maxDist;
+    }
+    joystick.dx = dx / maxDist;
+    joystick.dy = dy / maxDist;
+    
+    joyKnob.style.transform = `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px))`;
+}
+
+function gameLoop() {
+    update();
+    draw();
+    frameId = requestAnimationFrame(gameLoop);
+}
+
+</script>
+</body>
+</html>
